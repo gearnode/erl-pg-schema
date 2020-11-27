@@ -14,9 +14,9 @@
 
 -module(pg_schema_migrations).
 
--export([migration_directory/2, load/1, sort/1]).
+-export([migration_directory/2, load/2, sort/1]).
 
--spec migration_directory(App :: atom(), pg_schema:schema_name()) ->
+-spec migration_directory(App :: atom(), pg_schema:name()) ->
         file:filename_all().
 migration_directory(App, Name) ->
   case code:priv_dir(App) of
@@ -26,10 +26,10 @@ migration_directory(App, Name) ->
       filename:join([Path, "pg-schemas", Name])
   end.
 
--spec load(file:filename_all()) ->
+-spec load(pg_schema:name(), file:filename_all()) ->
         {ok, [pg_schema:migration()]} | {error, Reason} when
     Reason :: {list_dir, term()}.
-load(DirPath) ->
+load(Name, DirPath) ->
   case file:list_dir(DirPath) of
     {ok, Filenames0} ->
       Filenames = lists:sort(Filenames0),
@@ -44,7 +44,8 @@ load(DirPath) ->
                                  {ok, Data} -> Data;
                                  {error, Reason} -> throw({error, Reason})
                                end,
-                        Migration = #{version => Version,
+                        Migration = #{name => Name,
+                                      version => Version,
                                       code => Code},
                         [Migration | Acc];
                       {error, Reason} ->

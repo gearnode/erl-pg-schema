@@ -16,36 +16,37 @@
 
 -include_lib("kernel/include/logger.hrl").
 
--export([update/3, update/2]).
+-export([update/3]).
 
--export_type([schema_name/0, version/0, migration/0]).
+-export_type([name/0, version/0, migration/0]).
 
--type schema_name() :: binary() | string().
+-type name() :: binary().
 
 -type version() :: calendar:datetime().
 
--type migration() :: #{version := version(),
+-type migration() :: #{name := name(),
+                       version := version(),
                        code := binary()}.
 
 -spec domain() -> [atom()].
 domain() ->
   [pg_schema].
 
--spec update(pgc:pool_id(), App :: atom(), schema_name()) ->
+-spec update(pgc:pool_id(), App :: atom(), name()) ->
         ok | {error, term()}.
 update(Pool, App, Name) ->
   DirPath = pg_schema_migrations:migration_directory(App, Name),
-  case pg_schema_migrations:load(DirPath) of
+  case pg_schema_migrations:load(Name, DirPath) of
     {ok, Migrations} ->
-      update(Pool, Migrations);
+      do_update(Pool, Name, Migrations);
     {error, Reason} ->
       {error, Reason}
   end.
 
--spec update(pgc:pool_id(), [migration()]) -> ok | {error, term()}.
-update(_Pool, []) ->
-  ?LOG_INFO("no migration available", #{domain => domain()});
-update(Pool, Migrations) ->
+-spec do_update(pgc:pool_id(), name(), [migration()]) -> ok | {error, term()}.
+do_update(_Pool, Name, []) ->
+  ?LOG_INFO("no migration available", #{domain => domain(), schema => Name});
+do_update(Pool, Name, Migrations) ->
   F = fun (C) ->
           try
             %% Take a lock to make sure only one application tries to update the
@@ -59,9 +60,10 @@ update(Pool, Migrations) ->
             create_version_table(Pool),
 
             %% Load currently applied versions.
-            Versions = load_versions(C),
+            Versions = load_versions(C, Name),
             length(Versions) =:= 0 andalso
-              ?LOG_INFO("database uninitialized", #{domain => domain()}),
+              ?LOG_INFO("database uninitialized",
+                        #{domain => domain(), schema => Name}),
 
             %% Find missing migrations
             Migrations2 = unapplied_migrations(Migrations, Versions),
@@ -86,9 +88,11 @@ take_advisory_lock(Client) ->
 create_version_table(Pool) ->
   Query =
     "CREATE TABLE IF NOT EXISTS schema_versions("
-    "  version TIMESTAMP PRIMARY KEY,"
+    "  schema VARCHAR NOT NULL,"
+    "  version TIMESTAMP,"
     "  migration_date TIMESTAMP NOT NULL"
-    "    DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')"
+    "    DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),"
+    "  PRIMARY KEY (schema, version)"
     ")",
   case pgc:with_client(Pool, fun (C) -> must_exec(C, Query) end) of
     ok ->
@@ -97,10 +101,10 @@ create_version_table(Pool) ->
       throw({error, Reason})
   end.
 
--spec load_versions(pgc_client:ref()) -> [version()].
-load_versions(Client) ->
-  Query = "SELECT version FROM schema_versions",
-  case pgc:query(Client, Query) of
+-spec load_versions(pgc_client:ref(), name()) -> [version()].
+load_versions(Client, Name) ->
+  Query = "SELECT version FROM schema_versions WHERE schema = $1",
+  case pgc:query(Client, Query, [Name]) of
     {ok, _, Rows, _} ->
       [pgc_utils:timestamp_to_erlang_datetime(T) || [T] <- Rows];
     {error, Error} ->
@@ -113,20 +117,23 @@ unapplied_migrations(Migrations, Versions) ->
 
 -spec apply_migrations(pgc:pool_id(), [migration()]) -> ok.
 apply_migrations(Pool, Migrations) ->
-  F = fun (Migration = #{version := Version}) ->
+  F = fun (Migration = #{name := Name, version := Version}) ->
           ?LOG_INFO("applying migration ~s",
                     [pg_schema_versions:format(Version)],
-                    #{domain => domain()}),
+                    #{domain => domain(), schema => Name}),
           apply_migration(Pool, Migration)
       end,
   lists:foreach(F, Migrations).
 
 -spec apply_migration(pgc:pool_id(), migration()) -> ok.
-apply_migration(Pool, #{version := Version, code := Code}) ->
+apply_migration(Pool, #{name := Name, version := Version, code := Code}) ->
   F = fun (C) ->
           must_simple_exec(C, Code),
-          Query = "INSERT INTO schema_versions (version) VALUES ($1)",
-          must_exec(C, Query, [{timestamp, pgc_utils:timestamp(Version)}])
+          Query =
+            "INSERT INTO schema_versions (schema, version)"
+            "  VALUES ($1, $2)",
+          must_exec(C, Query,
+                    [Name, {timestamp, pgc_utils:timestamp(Version)}])
       end,
   pgc:with_transaction(Pool, F).
 
