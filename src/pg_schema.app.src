@@ -18,7 +18,8 @@
   {registered, []},
   {applications,
    [kernel,
-    stdlib]},
+    stdlib,
+    pgc]},
   {env, []},
   {modules, []},
 
