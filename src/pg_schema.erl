@@ -36,6 +36,8 @@ domain() ->
         ok | {error, term()}.
 update(Pool, App, Name) ->
   DirPath = pg_schema_migrations:migration_directory(App, Name),
+  ?LOG_INFO("loading migrations from ~s", [DirPath],
+            #{domain => domain(), schema => Name}),
   case pg_schema_migrations:load(Name, DirPath) of
     {ok, Migrations} ->
       do_update(Pool, Name, Migrations);
