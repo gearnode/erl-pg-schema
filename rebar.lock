@@ -4,5 +4,5 @@
   1},
  {<<"pgc">>,
   {git,"https://github.com/galdor/erl-pgc.git",
-       {ref,"ee918f59a0285600c9bc391475c0897ea782c2e9"}},
+       {ref,"1e8d67c5c5ccc043a4fc109864336797164b1d98"}},
   0}].

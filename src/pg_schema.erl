@@ -71,7 +71,15 @@ do_update(Pool, Name, Migrations) ->
             Migrations2 = unapplied_migrations(Migrations, Versions),
 
             %% Apply them in order
-            apply_migrations(Pool, pg_schema_migrations:sort(Migrations2))
+            apply_migrations(Pool, pg_schema_migrations:sort(Migrations2)),
+
+            %% Reload types, in case migrations created new ones
+            case pgc_client:reload_types(C) of
+              ok ->
+                ok;
+              {error, Reason} ->
+                throw({error, Reason})
+            end
           catch
             throw:{error, Error} ->
               {error, Error}
