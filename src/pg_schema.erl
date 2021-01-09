@@ -40,7 +40,16 @@ update(Pool, App, Name) ->
             #{domain => domain(), schema => Name}),
   case pg_schema_migrations:load(Name, DirPath) of
     {ok, Migrations} ->
-      do_update(Pool, Name, Migrations);
+      case do_update(Pool, Name, Migrations) of
+        ok ->
+          %% Migrations may have created new types; we stop all clients in the
+          %% pool to ensure that anyone using this pool after the update will
+          %% get new connections which will reload the type set.
+          pgc:stop_pool_clients(Pool),
+          ok;
+        {error, Reason} ->
+          {error, Reason}
+      end;
     {error, Reason} ->
       {error, Reason}
   end.
@@ -71,15 +80,7 @@ do_update(Pool, Name, Migrations) ->
             Migrations2 = unapplied_migrations(Migrations, Versions),
 
             %% Apply them in order
-            apply_migrations(Pool, pg_schema_migrations:sort(Migrations2)),
-
-            %% Reload types, in case migrations created new ones
-            case pgc_client:reload_types(C) of
-              ok ->
-                ok;
-              {error, Reason} ->
-                throw({error, Reason})
-            end
+            apply_migrations(Pool, pg_schema_migrations:sort(Migrations2))
           catch
             throw:{error, Error} ->
               {error, Error}
