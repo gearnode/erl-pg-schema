@@ -1,8 +1,8 @@
-[{<<"et">>,
-  {git,"https://github.com/galdor/erl-et.git",
-       {ref,"38ccbe694fe39eb7c284f6e850eca0d625b7e41a"}},
+[{<<"core">>,
+  {git,"https://github.com/exograd/erl-core.git",
+       {ref,"036df26f7b869cf2c1fd66c559a748657f3f2da3"}},
   1},
  {<<"pgc">>,
-  {git,"https://github.com/galdor/erl-pgc.git",
-       {ref,"41baae62f41ddd7c31018066231ba5142b480c86"}},
+  {git,"https://github.com/exograd/erl-pgc.git",
+       {ref,"765b02b738c39ae59cc005fbae544ec1c73d00a2"}},
   0}].
